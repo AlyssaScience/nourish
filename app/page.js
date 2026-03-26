@@ -12,49 +12,49 @@ const THEMES = {
   midnight: { name: "Midnight", emoji: "\u{1F319}", vars: { "--bg": "#1A1A2E", "--bg-card": "#242442", "--bg-hover": "#2E2E4A", "--text": "#E8E8F0", "--text-secondary": "#A8A8C0", "--text-muted": "#7878A0", "--accent": "#C084FC", "--accent-light": "#3D2E5E", "--accent-dark": "#A855F7", "--border": "#3A3A5C", "--shadow": "rgba(192, 132, 252, 0.1)", "--gradient-start": "#C084FC", "--gradient-end": "#818CF8" }},
 };
 
-// ==================== API HELPER ====================
-async function callAPI(action, data = {}) {
-  console.log(`[Nourish] Calling /api/claude with action: ${action}`);
-  let res;
-  try {
-    res = await fetch("/api/claude", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, ...data }),
-    });
-  } catch (fetchErr) {
-    console.error("[Nourish] Fetch failed entirely:", fetchErr);
-    throw new Error("Network error: could not reach the server. Check that your app is running.");
-  }
+// ==================== DATA HELPERS ====================
+async function fetchData(type) {
+  const res = await fetch(`/api/data?type=${type}`);
+  if (!res.ok) throw new Error(`Failed to fetch ${type}`);
+  return res.json();
+}
 
-  console.log(`[Nourish] Response status: ${res.status}, content-type: ${res.headers.get("content-type")}`);
+async function postData(type, action, payload) {
+  const res = await fetch("/api/data", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type, action, payload }),
+  });
+  if (!res.ok) throw new Error(`Failed to ${action} ${type}`);
+  return res.json();
+}
 
-  const contentType = res.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) {
-    const rawText = await res.text();
-    console.error("[Nourish] Non-JSON response body:", rawText.slice(0, 500));
-    throw new Error(`Server returned ${res.status} with non-JSON response. Check Vercel logs or browser console for details.`);
-  }
-
-  const json = await res.json();
-  if (!res.ok) {
-    console.error("[Nourish] API error response:", json);
-    throw new Error(json.error || `Request failed (${res.status})`);
-  }
-  console.log("[Nourish] Success:", Object.keys(json));
-  return json;
+async function uploadPhoto(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch("/api/upload", { method: "POST", body: formData });
+  if (!res.ok) throw new Error("Failed to upload photo");
+  return res.json();
 }
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result.split(",")[1];
-      resolve({ base64, mediaType: file.type });
-    };
+    reader.onload = () => resolve(reader.result);
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+// localStorage helpers (for meal history only)
+function loadLocal(key, fallback) {
+  if (typeof window === "undefined") return fallback;
+  try { const d = localStorage.getItem("nourish_" + key); return d ? JSON.parse(d) : fallback; }
+  catch { return fallback; }
+}
+function saveLocal(key, value) {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem("nourish_" + key, JSON.stringify(value)); } catch {}
 }
 
 // ==================== ICONS ====================
@@ -62,7 +62,6 @@ const Icons = {
   Camera: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>,
   Fridge: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="4" y1="10" x2="20" y2="10"/><line x1="8" y1="6" x2="8" y2="6.01"/><line x1="8" y1="14" x2="8" y2="16"/></svg>,
   ChefHat: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6z"/><line x1="6" y1="17" x2="18" y2="17"/></svg>,
-  Settings: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>,
   Plus: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
   X: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
   History: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
@@ -70,6 +69,8 @@ const Icons = {
   Sparkles: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>,
   Upload: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
   ShoppingCart: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>,
+  Check: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+  Refresh: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>,
 };
 
 function Spinner({ size = 24 }) {
@@ -81,57 +82,70 @@ function Spinner({ size = 24 }) {
   );
 }
 
-// ==================== STORAGE (client only) ====================
-function loadData(key, fallback) {
-  if (typeof window === "undefined") return fallback;
-  try { const d = localStorage.getItem("nourish_" + key); return d ? JSON.parse(d) : fallback; }
-  catch { return fallback; }
-}
-function saveData(key, value) {
-  if (typeof window === "undefined") return;
-  try { localStorage.setItem("nourish_" + key, JSON.stringify(value)); } catch {}
-}
-
 // ==================== MEAL SCANNER ====================
 function MealScanner() {
   const [image, setImage] = useState(null);
-  const [imageFile, setImageFile] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [pendingMeals, setPendingMeals] = useState([]);
   const [error, setError] = useState("");
-  const [history, setHistory] = useState(() => loadData("meal_history", []));
+  const [history, setHistory] = useState(() => loadLocal("meal_history", []));
   const [showHistory, setShowHistory] = useState(false);
+  const [loading, setLoading] = useState(true);
   const fileRef = useRef();
 
-  const handleFile = (file) => {
+  const loadPending = useCallback(async () => {
+    try {
+      const data = await fetchData("pending_meals");
+      setPendingMeals(data);
+    } catch {} finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { loadPending(); }, [loadPending]);
+
+  const handleFile = async (file) => {
     if (!file || !file.type.startsWith("image/")) return;
-    setImageFile(file);
-    setResult(null);
     setError("");
-    const reader = new FileReader();
-    reader.onload = (e) => setImage(e.target.result);
-    reader.readAsDataURL(file);
+    setUploadSuccess(false);
+
+    // Show preview
+    const dataUrl = await fileToBase64(file);
+    setImage(dataUrl);
+
+    // Upload to server
+    setUploading(true);
+    try {
+      await uploadPhoto(file);
+      setUploadSuccess(true);
+    } catch (err) {
+      setError(err.message || "Failed to upload photo");
+    }
+    setUploading(false);
   };
 
-  const analyze = async () => {
-    if (!imageFile) return;
-    setLoading(true);
-    setError("");
+  const approveMeal = async (meal) => {
     try {
-      const { base64, mediaType } = await fileToBase64(imageFile);
-      const data = await callAPI("analyze-meal", { imageBase64: base64, mediaType });
-      setResult(data);
-      const entry = { ...data, image, date: new Date().toISOString() };
+      await postData("pending_meals", "approve", { id: meal.id });
+      const entry = { ...meal, date: meal.date || new Date().toISOString() };
       const newHistory = [entry, ...history].slice(0, 50);
       setHistory(newHistory);
-      saveData("meal_history", newHistory);
+      saveLocal("meal_history", newHistory);
+      setPendingMeals((prev) => prev.filter((m) => m.id !== meal.id));
     } catch (err) {
-      setError(err.message || "Failed to analyze. Please try again.");
+      setError(err.message);
     }
-    setLoading(false);
   };
 
-  const clear = () => { setImage(null); setImageFile(null); setResult(null); setError(""); };
+  const rejectMeal = async (meal) => {
+    try {
+      await postData("pending_meals", "reject", { id: meal.id });
+      setPendingMeals((prev) => prev.filter((m) => m.id !== meal.id));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const clear = () => { setImage(null); setUploadSuccess(false); setError(""); };
 
   if (showHistory) {
     return (
@@ -142,8 +156,8 @@ function MealScanner() {
         </div>
         {history.length === 0 ? (
           <div style={{ textAlign: "center", padding: 60, color: "var(--text-muted)" }}>
-            <p style={{ fontSize: 40, marginBottom: 12 }}>📷</p>
-            <p>No meals scanned yet. Start by uploading a photo!</p>
+            <p style={{ fontSize: 40, marginBottom: 12 }}>&#x1F4F7;</p>
+            <p>No meals scanned yet. Upload a photo to get started!</p>
           </div>
         ) : history.map((h, i) => (
           <div key={i} style={{ background: "var(--bg-card)", borderRadius: "var(--radius)", padding: 16, marginBottom: 12, border: "1px solid var(--border)", display: "flex", gap: 16, alignItems: "center" }}>
@@ -164,15 +178,21 @@ function MealScanner() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div>
           <h2 className="serif" style={{ fontSize: 24, marginBottom: 4 }}>Meal Scanner</h2>
-          <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>Snap a photo and get instant nutrition info</p>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>Upload a photo, then ask Claude to analyze it</p>
         </div>
-        {history.length > 0 && (
-          <button onClick={() => setShowHistory(true)} style={{ background: "var(--accent-light)", color: "var(--accent)", border: "none", padding: "8px 16px", borderRadius: "var(--radius-sm)", cursor: "pointer", fontWeight: 500, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
-            <Icons.History /> History
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={loadPending} style={{ background: "var(--accent-light)", color: "var(--accent)", border: "none", padding: "8px", borderRadius: "var(--radius-sm)", cursor: "pointer" }} title="Refresh pending meals">
+            <Icons.Refresh />
           </button>
-        )}
+          {history.length > 0 && (
+            <button onClick={() => setShowHistory(true)} style={{ background: "var(--accent-light)", color: "var(--accent)", border: "none", padding: "8px 16px", borderRadius: "var(--radius-sm)", cursor: "pointer", fontWeight: 500, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
+              <Icons.History /> History
+            </button>
+          )}
+        </div>
       </div>
 
+      {/* Upload area */}
       {!image ? (
         <div
           onClick={() => fileRef.current?.click()}
@@ -197,65 +217,92 @@ function MealScanner() {
             </button>
           </div>
 
-          {!result && !loading && (
-            <button onClick={analyze} className="gradient-bg" style={{ width: "100%", padding: "16px 24px", borderRadius: "var(--radius)", border: "none", color: "#fff", fontSize: 16, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "transform 0.2s" }}
-              onMouseOver={e => e.currentTarget.style.transform = "scale(1.02)"}
-              onMouseOut={e => e.currentTarget.style.transform = "scale(1)"}
-            >
-              <Icons.Sparkles /> Analyze Meal
-            </button>
-          )}
-
-          {loading && (
-            <div style={{ background: "var(--bg-card)", borderRadius: "var(--radius)", padding: 32, textAlign: "center", border: "1px solid var(--border)" }}>
-              <Spinner size={36} />
-              <p style={{ marginTop: 16, fontWeight: 500, color: "var(--text-secondary)" }}>Analyzing your meal...</p>
+          {uploading && (
+            <div style={{ background: "var(--bg-card)", borderRadius: "var(--radius)", padding: 24, textAlign: "center", border: "1px solid var(--border)" }}>
+              <Spinner size={32} />
+              <p style={{ marginTop: 12, color: "var(--text-secondary)", fontWeight: 500 }}>Uploading photo...</p>
             </div>
           )}
 
-          {error && (
-            <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: "var(--radius)", padding: 16, color: "#DC2626", fontSize: 14 }}>{error}</div>
+          {uploadSuccess && (
+            <div style={{ background: "#E8F8EA", border: "1px solid #C3E6C3", borderRadius: "var(--radius)", padding: 16, color: "#2D7A38", fontSize: 14, display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>&#x2705;</span>
+              <div>
+                <p style={{ fontWeight: 600, marginBottom: 4 }}>Photo uploaded!</p>
+                <p>Now ask Claude to analyze your meals. Just say: &quot;analyze my new meals&quot;</p>
+              </div>
+            </div>
           )}
 
-          {result && (
-            <div className="fade-in">
-              <div className="gradient-bg" style={{ borderRadius: "var(--radius-lg)", padding: 24, color: "#fff", marginBottom: 16 }}>
-                <div style={{ fontSize: 14, opacity: 0.9, marginBottom: 8 }}>Total Calories</div>
-                <div className="serif" style={{ fontSize: 42, fontWeight: 700, marginBottom: 16 }}>{result.total?.calories}</div>
-                <div style={{ display: "flex", gap: 24 }}>
-                  <div><div style={{ fontSize: 12, opacity: 0.8 }}>Protein</div><div style={{ fontSize: 18, fontWeight: 600 }}>{result.total?.protein}g</div></div>
-                  <div><div style={{ fontSize: 12, opacity: 0.8 }}>Carbs</div><div style={{ fontSize: 18, fontWeight: 600 }}>{result.total?.carbs}g</div></div>
-                  <div><div style={{ fontSize: 12, opacity: 0.8 }}>Fat</div><div style={{ fontSize: 18, fontWeight: 600 }}>{result.total?.fat}g</div></div>
-                </div>
-              </div>
+          <button onClick={clear} style={{ width: "100%", padding: "14px", borderRadius: "var(--radius)", border: "2px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 15, fontWeight: 500, cursor: "pointer", marginTop: 12 }}>
+            Upload Another Photo
+          </button>
+        </div>
+      )}
 
-              <div style={{ background: "var(--bg-card)", borderRadius: "var(--radius)", border: "1px solid var(--border)", overflow: "hidden" }}>
-                {result.items?.map((item, i) => (
-                  <div key={i} style={{ padding: "14px 20px", borderBottom: i < result.items.length - 1 ? "1px solid var(--border)" : "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <div style={{ fontWeight: 500, marginBottom: 2 }}>{item.name}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{item.portion}</div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontWeight: 600, color: "var(--accent)" }}>{item.calories} cal</div>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>P:{item.protein}g C:{item.carbs}g F:{item.fat}g</div>
-                    </div>
+      {error && (
+        <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: "var(--radius)", padding: 12, color: "#DC2626", fontSize: 14, marginTop: 16 }}>{error}</div>
+      )}
+
+      {/* Pending meals from Claude analysis */}
+      {pendingMeals.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <h3 className="serif" style={{ fontSize: 18, marginBottom: 12 }}>Pending Approval ({pendingMeals.length})</h3>
+          {pendingMeals.map((meal) => (
+            <div key={meal.id} className="fade-in" style={{ background: "var(--bg-card)", borderRadius: "var(--radius)", border: "1px solid var(--border)", marginBottom: 16, overflow: "hidden" }}>
+              {meal.image && <img src={meal.image} alt="Meal" style={{ width: "100%", maxHeight: 200, objectFit: "cover", display: "block" }} />}
+
+              <div style={{ padding: 20 }}>
+                <div className="gradient-bg" style={{ borderRadius: "var(--radius)", padding: 20, color: "#fff", marginBottom: 12 }}>
+                  <div style={{ fontSize: 14, opacity: 0.9, marginBottom: 6 }}>Total Calories</div>
+                  <div className="serif" style={{ fontSize: 36, fontWeight: 700, marginBottom: 12 }}>{meal.total?.calories}</div>
+                  <div style={{ display: "flex", gap: 24 }}>
+                    <div><div style={{ fontSize: 12, opacity: 0.8 }}>Protein</div><div style={{ fontSize: 16, fontWeight: 600 }}>{meal.total?.protein}g</div></div>
+                    <div><div style={{ fontSize: 12, opacity: 0.8 }}>Carbs</div><div style={{ fontSize: 16, fontWeight: 600 }}>{meal.total?.carbs}g</div></div>
+                    <div><div style={{ fontSize: 12, opacity: 0.8 }}>Fat</div><div style={{ fontSize: 16, fontWeight: 600 }}>{meal.total?.fat}g</div></div>
                   </div>
-                ))}
-              </div>
-
-              {result.summary && (
-                <div style={{ background: "var(--accent-light)", borderRadius: "var(--radius)", padding: 16, marginTop: 12, fontSize: 14, color: "var(--accent-dark)", display: "flex", gap: 8, alignItems: "flex-start" }}>
-                  <span style={{ fontSize: 18, flexShrink: 0 }}>💡</span>
-                  <span>{result.summary}</span>
                 </div>
-              )}
 
-              <button onClick={clear} style={{ width: "100%", padding: "14px", borderRadius: "var(--radius)", border: "2px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 15, fontWeight: 500, cursor: "pointer", marginTop: 12 }}>
-                Scan Another Meal
-              </button>
+                <div style={{ background: "var(--bg)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", overflow: "hidden", marginBottom: 12 }}>
+                  {meal.items?.map((item, i) => (
+                    <div key={i} style={{ padding: "12px 16px", borderBottom: i < meal.items.length - 1 ? "1px solid var(--border)" : "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontWeight: 500, marginBottom: 2 }}>{item.name}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{item.portion}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontWeight: 600, color: "var(--accent)" }}>{item.calories} cal</div>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>P:{item.protein}g C:{item.carbs}g F:{item.fat}g</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {meal.summary && (
+                  <div style={{ background: "var(--accent-light)", borderRadius: "var(--radius-sm)", padding: 12, fontSize: 13, color: "var(--accent-dark)", display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 12 }}>
+                    <span style={{ fontSize: 16, flexShrink: 0 }}>&#x1F4A1;</span>
+                    <span>{meal.summary}</span>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => approveMeal(meal)} className="gradient-bg" style={{ flex: 1, padding: "12px", borderRadius: "var(--radius-sm)", border: "none", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <Icons.Check /> Approve
+                  </button>
+                  <button onClick={() => rejectMeal(meal)} style={{ padding: "12px 20px", borderRadius: "var(--radius-sm)", border: "2px solid var(--border)", background: "transparent", color: "var(--text-muted)", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
+                    Reject
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
+          ))}
+        </div>
+      )}
+
+      {!loading && pendingMeals.length === 0 && !image && (
+        <div style={{ background: "var(--accent-light)", borderRadius: "var(--radius)", padding: 16, marginTop: 16, fontSize: 14, color: "var(--accent-dark)", display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <span style={{ fontSize: 18, flexShrink: 0 }}>&#x1F4A1;</span>
+          <span>Upload photos here, then ask Claude Code to analyze your meals. Claude will read the photos and add the nutrition info for your approval.</span>
         </div>
       )}
     </div>
@@ -264,54 +311,52 @@ function MealScanner() {
 
 // ==================== MY FRIDGE ====================
 function MyFridge() {
-  const [items, setItems] = useState(() => loadData("fridge_items", []));
+  const [items, setItems] = useState([]);
   const [newItem, setNewItem] = useState("");
   const [newCategory, setNewCategory] = useState("produce");
-  const [scanning, setScanning] = useState(false);
-  const [scanError, setScanError] = useState("");
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
-  const fileRef = useRef();
-
-  useEffect(() => { saveData("fridge_items", items); }, [items]);
+  const [loading, setLoading] = useState(true);
 
   const categories = {
-    produce: { label: "Produce", emoji: "🥬" },
-    protein: { label: "Protein", emoji: "🥩" },
-    dairy: { label: "Dairy", emoji: "🧀" },
-    grains: { label: "Grains", emoji: "🌾" },
-    condiments: { label: "Condiments", emoji: "🫙" },
-    frozen: { label: "Frozen", emoji: "🧊" },
-    beverages: { label: "Beverages", emoji: "🥤" },
-    other: { label: "Other", emoji: "📦" },
+    produce: { label: "Produce", emoji: "&#x1F96C;" },
+    protein: { label: "Protein", emoji: "&#x1F969;" },
+    dairy: { label: "Dairy", emoji: "&#x1F9C0;" },
+    grains: { label: "Grains", emoji: "&#x1F33E;" },
+    condiments: { label: "Condiments", emoji: "&#x1FAD9;" },
+    frozen: { label: "Frozen", emoji: "&#x1F9CA;" },
+    beverages: { label: "Beverages", emoji: "&#x1F964;" },
+    other: { label: "Other", emoji: "&#x1F4E6;" },
   };
 
-  const addItem = () => {
-    if (!newItem.trim()) return;
-    setItems(prev => [...prev, { id: Date.now(), name: newItem.trim(), category: newCategory, addedDate: new Date().toISOString() }]);
-    setNewItem("");
+  // Use actual emoji characters for rendering
+  const catEmojis = {
+    produce: "\u{1F96C}", protein: "\u{1F969}", dairy: "\u{1F9C0}", grains: "\u{1F33E}",
+    condiments: "\u{1FAD9}", frozen: "\u{1F9CA}", beverages: "\u{1F964}", other: "\u{1F4E6}",
   };
 
-  const removeItem = (id) => setItems(prev => prev.filter(it => it.id !== id));
-
-  const scanFridge = async (file) => {
-    if (!file) return;
-    setScanning(true);
-    setScanError("");
+  const loadFridge = useCallback(async () => {
     try {
-      const { base64, mediaType } = await fileToBase64(file);
-      const data = await callAPI("scan-fridge", { imageBase64: base64, mediaType });
-      const newItems = data.items.map((it, i) => ({
-        id: Date.now() + i,
-        name: it.name,
-        category: it.category || "other",
-        addedDate: new Date().toISOString(),
-      }));
-      setItems(prev => [...prev, ...newItems]);
-    } catch (err) {
-      setScanError(err.message || "Failed to scan. Please try again.");
-    }
-    setScanning(false);
+      const data = await fetchData("fridge");
+      setItems(data);
+    } catch {} finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { loadFridge(); }, [loadFridge]);
+
+  const addItem = async () => {
+    if (!newItem.trim()) return;
+    const item = { id: Date.now(), name: newItem.trim(), category: newCategory, addedDate: new Date().toISOString() };
+    const updated = [...items, item];
+    setItems(updated);
+    setNewItem("");
+    try { await postData("fridge", "set", updated); } catch {}
+  };
+
+  const removeItem = async (id) => {
+    const updated = items.filter(it => it.id !== id);
+    setItems(updated);
+    try { await postData("fridge", "set", updated); } catch {}
   };
 
   const filtered = items.filter(it => !search || it.name.toLowerCase().includes(search.toLowerCase()));
@@ -329,26 +374,14 @@ function MyFridge() {
           <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>{items.length} item{items.length !== 1 ? "s" : ""} tracked</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => fileRef.current?.click()} style={{ background: "var(--accent-light)", color: "var(--accent)", border: "none", padding: "8px 16px", borderRadius: "var(--radius-sm)", cursor: "pointer", fontWeight: 500, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
-            <Icons.Camera /> Scan
+          <button onClick={loadFridge} style={{ background: "var(--accent-light)", color: "var(--accent)", border: "none", padding: "8px", borderRadius: "var(--radius-sm)", cursor: "pointer" }} title="Refresh from file">
+            <Icons.Refresh />
           </button>
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={e => { scanFridge(e.target.files[0]); e.target.value = ""; }} />
           <button onClick={() => setShowAdd(!showAdd)} className="gradient-bg" style={{ color: "#fff", border: "none", padding: "8px 16px", borderRadius: "var(--radius-sm)", cursor: "pointer", fontWeight: 500, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
             <Icons.Plus /> Add
           </button>
         </div>
       </div>
-
-      {scanning && (
-        <div style={{ background: "var(--bg-card)", borderRadius: "var(--radius)", padding: 24, textAlign: "center", border: "1px solid var(--border)", marginBottom: 16 }}>
-          <Spinner size={32} />
-          <p style={{ marginTop: 12, color: "var(--text-secondary)", fontWeight: 500 }}>Scanning your fridge...</p>
-        </div>
-      )}
-
-      {scanError && (
-        <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: "var(--radius)", padding: 12, color: "#DC2626", fontSize: 14, marginBottom: 16 }}>{scanError}</div>
-      )}
 
       {showAdd && (
         <div className="fade-in" style={{ background: "var(--bg-card)", borderRadius: "var(--radius)", padding: 16, border: "1px solid var(--border)", marginBottom: 16 }}>
@@ -359,8 +392,8 @@ function MyFridge() {
             <button onClick={addItem} disabled={!newItem.trim()} style={{ padding: "10px 20px", borderRadius: "var(--radius-sm)", border: "none", background: newItem.trim() ? "var(--accent)" : "var(--border)", color: "#fff", fontWeight: 600, cursor: newItem.trim() ? "pointer" : "default", fontSize: 14 }}>Add</button>
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {Object.entries(categories).map(([key, { label, emoji }]) => (
-              <button key={key} onClick={() => setNewCategory(key)} style={{ padding: "6px 12px", borderRadius: 20, border: newCategory === key ? "2px solid var(--accent)" : "2px solid var(--border)", background: newCategory === key ? "var(--accent-light)" : "transparent", fontSize: 13, cursor: "pointer", color: "var(--text)" }}>{emoji} {label}</button>
+            {Object.entries(categories).map(([key, { label }]) => (
+              <button key={key} onClick={() => setNewCategory(key)} style={{ padding: "6px 12px", borderRadius: 20, border: newCategory === key ? "2px solid var(--accent)" : "2px solid var(--border)", background: newCategory === key ? "var(--accent-light)" : "transparent", fontSize: 13, cursor: "pointer", color: "var(--text)" }}>{catEmojis[key]} {label}</button>
             ))}
           </div>
         </div>
@@ -374,17 +407,22 @@ function MyFridge() {
         </div>
       )}
 
-      {items.length === 0 ? (
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 40 }}><Spinner size={32} /></div>
+      ) : items.length === 0 ? (
         <div style={{ textAlign: "center", padding: 60, color: "var(--text-muted)" }}>
-          <p style={{ fontSize: 48, marginBottom: 12 }}>🧊</p>
+          <p style={{ fontSize: 48, marginBottom: 12 }}>{"\u{1F9CA}"}</p>
           <p style={{ fontWeight: 500, marginBottom: 4 }}>Your fridge is empty!</p>
-          <p style={{ fontSize: 14 }}>Scan your fridge or add items manually to get started.</p>
+          <p style={{ fontSize: 14, marginBottom: 16 }}>Add items manually, or tell Claude what you have.</p>
+          <div style={{ background: "var(--accent-light)", borderRadius: "var(--radius)", padding: 14, fontSize: 13, color: "var(--accent-dark)", textAlign: "left" }}>
+            {"\u{1F4A1}"} Tip: Tell Claude &quot;I have eggs, milk, bread, and cheese in my fridge&quot; and it will update your inventory.
+          </div>
         </div>
       ) : (
         Object.entries(grouped).map(([cat, catItems]) => (
           <div key={cat} style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-              <span>{categories[cat]?.emoji || "📦"}</span> {categories[cat]?.label || cat}
+              <span>{catEmojis[cat] || "\u{1F4E6}"}</span> {categories[cat]?.label || cat}
               <span style={{ background: "var(--accent-light)", color: "var(--accent)", padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700, textTransform: "none" }}>{catItems.length}</span>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -407,69 +445,74 @@ function MyFridge() {
 
 // ==================== MEAL PLANNER ====================
 function MealPlanner() {
-  const [items] = useState(() => loadData("fridge_items", []));
-  const [preferences, setPreferences] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [fridgeItems, setFridgeItems] = useState([]);
   const [plan, setPlan] = useState(null);
-  const [error, setError] = useState("");
   const [shoppingList, setShoppingList] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const generatePlan = async () => {
-    setLoading(true);
-    setError("");
+  const loadData = useCallback(async () => {
     try {
-      const data = await callAPI("plan-meals", {
-        fridgeItems: items.map(it => it.name),
-        preferences,
-      });
-      setPlan(data);
-      setShoppingList(data.shoppingList || []);
-    } catch (err) {
-      setError(err.message || "Failed to generate plan. Please try again.");
-    }
-    setLoading(false);
+      const [fridge, plans] = await Promise.all([
+        fetchData("fridge"),
+        fetchData("meal_plans"),
+      ]);
+      setFridgeItems(fridge);
+      if (plans && plans.meals) {
+        setPlan(plans);
+        setShoppingList(plans.shoppingList || []);
+      }
+    } catch {} finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const clearPlan = async () => {
+    try {
+      await postData("meal_plans", "clear", {});
+      setPlan(null);
+      setShoppingList(null);
+    } catch {}
   };
 
   const difficultyColor = { easy: "#6BBF7A", medium: "#F4A261", hard: "#E85A5A" };
 
   return (
     <div className="fade-in">
-      <div style={{ marginBottom: 24 }}>
-        <h2 className="serif" style={{ fontSize: 24, marginBottom: 4 }}>Meal Planner</h2>
-        <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>Get meal ideas based on what{"'"}s in your fridge</p>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <div>
+          <h2 className="serif" style={{ fontSize: 24, marginBottom: 4 }}>Meal Planner</h2>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>Ask Claude to plan meals from your fridge</p>
+        </div>
+        <button onClick={loadData} style={{ background: "var(--accent-light)", color: "var(--accent)", border: "none", padding: "8px", borderRadius: "var(--radius-sm)", cursor: "pointer" }} title="Refresh">
+          <Icons.Refresh />
+        </button>
       </div>
 
       <div style={{ background: "var(--bg-card)", borderRadius: "var(--radius)", border: "1px solid var(--border)", padding: 16, marginBottom: 16 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8 }}>WHAT YOU HAVE ({items.length} items)</div>
-        {items.length === 0 ? (
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8 }}>WHAT YOU HAVE ({fridgeItems.length} items)</div>
+        {fridgeItems.length === 0 ? (
           <p style={{ color: "var(--text-muted)", fontSize: 14 }}>No items in your fridge yet. Add some in the Fridge tab first!</p>
         ) : (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {items.slice(0, 20).map((it, i) => (
+            {fridgeItems.slice(0, 20).map((it, i) => (
               <span key={i} style={{ background: "var(--accent-light)", color: "var(--accent-dark)", padding: "4px 10px", borderRadius: 12, fontSize: 13, fontWeight: 500 }}>{it.name}</span>
             ))}
-            {items.length > 20 && <span style={{ padding: "4px 10px", fontSize: 13, color: "var(--text-muted)" }}>+{items.length - 20} more</span>}
+            {fridgeItems.length > 20 && <span style={{ padding: "4px 10px", fontSize: 13, color: "var(--text-muted)" }}>+{fridgeItems.length - 20} more</span>}
           </div>
         )}
       </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <textarea value={preferences} onChange={e => setPreferences(e.target.value)}
-          placeholder="Any dietary preferences? (e.g., high protein, vegetarian, quick meals under 30 min...)" rows={2}
-          style={{ width: "100%", padding: "12px 14px", borderRadius: "var(--radius-sm)", border: "2px solid var(--border)", fontSize: 14, background: "var(--bg-card)", color: "var(--text)", outline: "none", resize: "vertical", fontFamily: "inherit" }}
-          onFocus={e => e.target.style.borderColor = "var(--accent)"} onBlur={e => e.target.style.borderColor = "var(--border)"} />
-      </div>
-
-      <button onClick={generatePlan} disabled={loading} className={loading ? "" : "gradient-bg"}
-        style={{ width: "100%", padding: "16px 24px", borderRadius: "var(--radius)", border: "none", background: loading ? "var(--border)" : undefined, color: "#fff", fontSize: 16, fontWeight: 600, cursor: loading ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16 }}>
-        {loading ? <><Spinner size={20} /> Generating ideas...</> : <><Icons.Sparkles /> Generate Meal Ideas</>}
-      </button>
-
-      {error && (
-        <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: "var(--radius)", padding: 12, color: "#DC2626", fontSize: 14, marginBottom: 16 }}>{error}</div>
-      )}
-
-      {plan && (
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 40 }}><Spinner size={32} /></div>
+      ) : !plan ? (
+        <div style={{ background: "var(--accent-light)", borderRadius: "var(--radius)", padding: 20, textAlign: "center" }}>
+          <span style={{ fontSize: 40, display: "block", marginBottom: 12 }}>{"\u{1F468}\u{200D}\u{1F373}"}</span>
+          <p style={{ fontWeight: 600, color: "var(--accent-dark)", marginBottom: 8 }}>No meal plan yet</p>
+          <p style={{ fontSize: 14, color: "var(--accent-dark)", opacity: 0.8 }}>
+            Ask Claude: &quot;Plan some meals based on my fridge&quot;
+          </p>
+        </div>
+      ) : (
         <div className="fade-in">
           {plan.meals?.map((meal, i) => (
             <div key={i} style={{ background: "var(--bg-card)", borderRadius: "var(--radius)", border: "1px solid var(--border)", padding: 20, marginBottom: 12 }}>
@@ -479,18 +522,18 @@ function MealPlanner() {
               </div>
               <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, lineHeight: 1.5 }}>{meal.description}</p>
               <div style={{ display: "flex", gap: 16, marginBottom: 12, fontSize: 13 }}>
-                <span style={{ color: "var(--accent)", fontWeight: 500 }}>🔥 {meal.estimatedCalories} cal</span>
-                <span style={{ color: "var(--text-muted)" }}>⏱ {meal.cookTime}</span>
+                <span style={{ color: "var(--accent)", fontWeight: 500 }}>{"\u{1F525}"} {meal.estimatedCalories} cal</span>
+                <span style={{ color: "var(--text-muted)" }}>{"\u23F1"} {meal.cookTime}</span>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--success)", marginRight: 4 }}>Have:</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#6BBF7A", marginRight: 4 }}>Have:</span>
                 {meal.haveIngredients?.map((ing, j) => (
                   <span key={j} style={{ background: "#E8F8EA", color: "#2D7A38", padding: "3px 8px", borderRadius: 8, fontSize: 12 }}>{ing}</span>
                 ))}
               </div>
               {meal.needIngredients?.length > 0 && (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "var(--warning)", marginRight: 4 }}>Need:</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#F4A261", marginRight: 4 }}>Need:</span>
                   {meal.needIngredients.map((ing, j) => (
                     <span key={j} style={{ background: "#FEF3E2", color: "#B87A2B", padding: "3px 8px", borderRadius: 8, fontSize: 12 }}>{ing}</span>
                   ))}
@@ -513,6 +556,10 @@ function MealPlanner() {
               ))}
             </div>
           )}
+
+          <button onClick={clearPlan} style={{ width: "100%", padding: "14px", borderRadius: "var(--radius)", border: "2px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 15, fontWeight: 500, cursor: "pointer", marginTop: 12 }}>
+            Clear Plan
+          </button>
         </div>
       )}
     </div>
@@ -552,7 +599,7 @@ export default function Home() {
 
   useEffect(() => {
     setMounted(true);
-    const saved = loadData("theme", "rosegold");
+    const saved = loadLocal("theme", "rosegold");
     setTheme(saved);
   }, []);
 
@@ -560,7 +607,7 @@ export default function Home() {
     if (!mounted) return;
     const t = THEMES[theme];
     if (t) Object.entries(t.vars).forEach(([k, v]) => document.documentElement.style.setProperty(k, v));
-    saveData("theme", theme);
+    saveLocal("theme", theme);
   }, [theme, mounted]);
 
   const tabs = [
@@ -575,7 +622,7 @@ export default function Home() {
     <div style={{ maxWidth: 520, margin: "0 auto", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid var(--border)", background: "var(--bg-card)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 24 }}>🥗</span>
+          <span style={{ fontSize: 24 }}>{"\u{1F957}"}</span>
           <h1 className="serif gradient-text" style={{ fontSize: 22, fontWeight: 600 }}>Nourish</h1>
         </div>
         <button onClick={() => setShowThemePicker(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: 8, borderRadius: 8, color: "var(--text-muted)" }} title="Change theme">

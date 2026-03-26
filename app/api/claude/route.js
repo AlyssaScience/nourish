@@ -1,13 +1,11 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function POST(request) {
   try {
-    if (!process.env.ANTHROPIC_API_KEY) {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
       return NextResponse.json(
-        { error: "API key not configured" },
+        { error: "ANTHROPIC_API_KEY is not set in environment variables." },
         { status: 500 }
       );
     }
@@ -66,14 +64,38 @@ export async function POST(request) {
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
 
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2048,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userContent }],
+    // Call Anthropic API directly with fetch (avoids SDK import issues)
+    const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2048,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userContent }],
+      }),
     });
 
-    const text = response.content[0].text;
+    const anthropicData = await anthropicRes.json();
+
+    if (!anthropicRes.ok) {
+      const errMsg =
+        anthropicData?.error?.message || `Anthropic API error (${anthropicRes.status})`;
+      return NextResponse.json({ error: errMsg }, { status: anthropicRes.status });
+    }
+
+    const text = anthropicData.content?.[0]?.text;
+    if (!text) {
+      return NextResponse.json(
+        { error: "Empty response from AI" },
+        { status: 500 }
+      );
+    }
+
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return NextResponse.json(
@@ -84,7 +106,7 @@ export async function POST(request) {
 
     return NextResponse.json(JSON.parse(jsonMatch[0]));
   } catch (err) {
-    console.error("Claude API error:", err);
+    console.error("API route error:", err);
     return NextResponse.json(
       { error: err.message || "Internal server error" },
       { status: 500 }

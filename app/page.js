@@ -14,13 +14,34 @@ const THEMES = {
 
 // ==================== API HELPER ====================
 async function callAPI(action, data = {}) {
-  const res = await fetch("/api/claude", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action, ...data }),
-  });
+  console.log(`[Nourish] Calling /api/claude with action: ${action}`);
+  let res;
+  try {
+    res = await fetch("/api/claude", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, ...data }),
+    });
+  } catch (fetchErr) {
+    console.error("[Nourish] Fetch failed entirely:", fetchErr);
+    throw new Error("Network error: could not reach the server. Check that your app is running.");
+  }
+
+  console.log(`[Nourish] Response status: ${res.status}, content-type: ${res.headers.get("content-type")}`);
+
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    const rawText = await res.text();
+    console.error("[Nourish] Non-JSON response body:", rawText.slice(0, 500));
+    throw new Error(`Server returned ${res.status} with non-JSON response. Check Vercel logs or browser console for details.`);
+  }
+
   const json = await res.json();
-  if (!res.ok) throw new Error(json.error || "Request failed");
+  if (!res.ok) {
+    console.error("[Nourish] API error response:", json);
+    throw new Error(json.error || `Request failed (${res.status})`);
+  }
+  console.log("[Nourish] Success:", Object.keys(json));
   return json;
 }
 

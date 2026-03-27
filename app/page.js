@@ -45,7 +45,37 @@ async function callAPI(action, data = {}) {
   return json;
 }
 
+// Compress image to stay under Vercel's 4.5MB body limit
+function compressImage(file, maxWidth = 1200, quality = 0.7) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let w = img.width;
+      let h = img.height;
+      if (w > maxWidth) {
+        h = Math.round((h * maxWidth) / w);
+        w = maxWidth;
+      }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL("image/jpeg", quality);
+      const base64 = dataUrl.split(",")[1];
+      console.log(`[Nourish] Compressed image: ${file.size} bytes -> ~${Math.round(base64.length * 0.75)} bytes (${w}x${h})`);
+      resolve({ base64, mediaType: "image/jpeg" });
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 function fileToBase64(file) {
+  // Always compress images to avoid Vercel body size limits
+  if (file.type.startsWith("image/")) {
+    return compressImage(file);
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
